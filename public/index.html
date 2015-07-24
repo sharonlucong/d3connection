@@ -1,0 +1,224 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Final Project_Cong Lu</title>
+    <style>
+      { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font: 13px Helvetica, Arial; margin: 0; background:black;}
+      form { background: #000; padding: 3px; position: fixed; bottom: 0; width: 100%; }
+      form input { border: 0; padding: 10px; width: 90%; margin-right: .5%; background:#5f5f5f;}
+      form button { width: 7%; background: rgb(130, 224, 255); border: none; padding: 10px; }
+      canvas { width: 100%; height: 100% ;}
+      #messages { list-style-type: none; margin: 0; padding: 0; }
+      #messages li { padding: 5px 10px; }
+      #messages li:nth-child(odd) { background: #eee; }
+      .node {
+          cursor: move;
+        }
+
+    </style>
+  </head>
+  <body>
+   
+ <ul id="messages"></ul>
+    <form action="">
+      <input id="m" autocomplete="off" placeholder="Click, Drag, Double Click"/><button>Send</button>
+    </form>
+    <script src="timbre.js"></script>
+    <script src="audio-jsonp.js"></script>
+    <script src="jsmad.js"></script>
+    <script src="mp3_decode.js"></script>
+    <script src="soundfont.js"></script>
+    <script src="../socket.io/socket.io.js"></script>
+    <script src="https://cdn.socket.io/socket.io-1.2.0.js"></script>
+    <script src="http://code.jquery.com/jquery-1.11.1.js"></script>
+    <script src="http://d3js.org/d3.v3.min.js"></script>
+    hi
+
+<script>
+
+var note;
+var playsound = false;
+var timer = 0;
+var fr = [0,0];
+
+
+var colors = ['rgb(215,48,39)','rgb(244,109,67)','rgb(253,174,97)','rgb(254,224,139)','rgb(255,255,191)','rgb(217,239,139)','rgb(166,217,106)','rgb(102,189,99)','rgb(26,152,80)'];
+
+var c = 5;
+var p = 0;
+
+
+//////////////////chat room//////////////
+  var socket = io();
+  $('form').submit(function(){
+    socket.emit('instrument', $('#m').val());
+    $('#m').val('');
+    return false;
+  });
+  socket.on('instrument', function(r){
+    c = r;
+  });
+
+  socket.on('color option', function(j){
+    p = j;
+  });
+
+  socket.on('sound type',function(fre){
+    T.soundfont.setInstrument(c);
+    T.soundfont.play(fre);
+  });
+
+  socket.on('sine sound',function(timer){
+    var sine1 = T("sin", {freq:fr[0], mul:0.05});
+    var sine2 = T("saw", {freq:fr[1], mul:0.05});
+    T("perc", {r:timer}, sine1, sine2).on("ended", function() {
+    this.pause();
+  }).bang().play();
+  });
+
+
+////////////////d3/////////////////////
+
+var width = Math.max(960,innerWidth),
+    height = Math.max(500,innerHeight);
+var temp = 0;
+var colorArray = [];
+var color = d3.scale.category20();
+
+var sound;
+
+var force = d3.layout.force()
+    .charge(-120)
+    .linkDistance(80)
+    .size([width, height]);
+
+var svg = d3.select("body").append("svg")
+    .attr("width", width)
+    .attr("height", height);
+
+d3.json("miserables.json", function(error, graph) {
+  force
+      .nodes(graph.nodes)
+      .links(graph.links)
+      .start();
+
+
+  var drag = force.drag()
+      .on("dragstart", dragstart);
+
+       var link = svg.selectAll(".link")
+      .data(graph.links)
+    .enter().append("line")
+      .attr("class", "link")
+      .attr("stroke", function(d){ //return color(colorArray[i]);
+         //return "rgb(50, 80, " + (d * 10) + ")";
+         return colors[p]; 
+      })
+      .style("stroke-width", function(d) { return Math.sqrt(d.value)/2; });
+
+  var node = svg.selectAll(".node")
+      .data(graph.nodes)
+    .enter().append("circle")
+      .attr("class", "node")
+      .attr("r", function(d) { return 8; })
+      .attr("fill", function(d){
+        return "rgb(125,125,125)";
+      })
+      .on("mouseover",function(d){
+          d3.select(this)
+          .attr("stroke","red");
+      })
+      .on("mouseout",function(d){
+
+        d3.select(this)
+          .attr("stroke","none");
+      })
+      .on("click",function(d){
+        d3.select(this)
+        .attr("fill", function(d){
+        return color(d.group);
+      });
+        note = Math.floor(Math.random() * 50) + 40;
+        socket.emit('sound type',note);
+
+      })
+      .on("mousedown",function(d){
+        var mp = d3.mouse(this);
+        svg.on("mousemove",particle);
+      })
+      .on("mouseup",function(d){
+        svg.on("mousemove",null);
+      })
+      .on("dblclick", dblclick)
+      .call(force.drag);
+
+  node.append("title")
+      .text(function(d) { return d.name; });
+
+  force.on("tick", function() {
+
+    link.attr("x1", function(d) { return d.source.x; })
+        .attr("y1", function(d) { return d.source.y; })
+        .attr("x2", function(d) { return d.target.x; })
+        .attr("y2", function(d) { return d.target.y; })
+        .attr("stroke", function(d){ //return color(colorArray[i]);
+         return colors[p]; 
+      });
+
+    node.attr("cx", function(d) { return d.x; })
+        .attr("cy", function(d) { return d.y; });
+
+  });
+  
+});
+
+function dragstart(d) {
+  d.fixed = true;
+  var m = d3.mouse(this);
+  
+  fr[0] = midiRange(m[0],0,width,220,1760);
+  fr[1] = midiRange(m[1],0,height,220,1760);
+  timer = midiRange(m[0],0,width,200,600);
+  timer = timer*10;
+  socket.emit('sine sound',timer);
+
+}
+
+
+function dblclick(d) {
+  d.fixed = false;
+  d3.select(this)
+    .attr("fill",function(d){
+      return "rgb(125,125,125)";
+    }); 
+}
+
+function particle() {
+var m = d3.mouse(this);
+
+svg.append("circle")
+   .attr("cx", m[0])
+   .attr("cy", m[1])
+   .attr("r", 1e-6)
+   .style("fill","none")
+   .style("stroke", d3.hsl((temp = (temp + 1) % 360), 1, .5))
+   .style("stroke-opacity", 1)
+   .transition()
+   .duration(2000)
+   .ease(Math.sqrt)
+   .attr("r", 100)
+   .style("stroke-opacity", 1e-6)
+   .remove();
+
+   d3.event.preventDefault();  
+}
+
+var midiRange = function(value,min,max,minrange,maxrange){
+return (value - min) * (maxrange - minrange) / (max - min) + minrange;
+};
+
+</script>
+
+</body>
+</html>

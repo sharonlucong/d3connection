@@ -1,0 +1,10 @@
+{
+  "name": "final-project",
+  "version": "0.0.1",
+  "description": "my first time to try with socket.io & threejs",
+  "dependencies": {
+    "express": "^4.10.2",
+    "socket.io": "^1.2.1",
+    "timbre": "^14.11.25"
+  }
+}
